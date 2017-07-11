@@ -42,6 +42,7 @@ static const struct kmod_cmd *kmod_cmds[] = {
 	&kmod_cmd_help,
 	&kmod_cmd_list,
 	&kmod_cmd_static_nodes,
+	&kmod_cmd_modsyms,
 
 #ifdef ENABLE_EXPERIMENTAL
 	&kmod_cmd_insert,

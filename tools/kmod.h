@@ -38,5 +38,6 @@ extern const struct kmod_cmd kmod_cmd_insert;
 extern const struct kmod_cmd kmod_cmd_list;
 extern const struct kmod_cmd kmod_cmd_static_nodes;
 extern const struct kmod_cmd kmod_cmd_remove;
+extern const struct kmod_cmd kmod_cmd_modsyms;
 
 #include "log.h"
