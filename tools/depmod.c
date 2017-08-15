@@ -120,7 +120,7 @@ static void help(void)
 		"\t-P, --symbol-prefix  Architecture symbol prefix\n"
 		"\t-C, --config=PATH    Read configuration from PATH\n"
 		"\t-v, --verbose        Enable verbose mode\n"
-		"\t-d, --debug=TYPE     Display debugging output (all,reverse)\n"
+		"\t-d, --debug=TYPE     Display debugging output (all,reverse,builtin)\n"
 		"\t-w, --warn           Warn on duplicates\n"
 		"\t-V, --version        show version\n"
 		"\t-h, --help           show this help\n"
@@ -936,12 +936,19 @@ static void mod_free(struct mod *mod)
 
 static int mod_add_dependency(struct mod *mod, struct symbol *sym)
 {
+	struct kmod_list *l;
 	int err;
 
 	DBG("%s depends on %s %s\n", mod->path, sym->name,
 	    sym->owner != NULL ? sym->owner->path : "(unknown)");
 
-	sym->dep_list = kmod_list_append(sym->dep_list, mod);
+	l = kmod_list_append(sym->dep_list, mod);
+	if (l == NULL) {
+		ERR("No memory to build module dependency list\n");
+		return -ENOMEM;
+	} else {
+		sym->dep_list = l;
+	}
 
 	if (sym->owner == NULL)
 		return 0;
@@ -962,7 +969,8 @@ static void symbol_free(struct symbol *sym)
 	DBG("free %p sym=%s, owner=%p %s\n", sym, sym->name, sym->owner,
 	    sym->owner != NULL ? sym->owner->path : "");
 
-	// TODO free dep_list
+	// TODO: write real free routine
+	//kmod_module_symbols_free_list(sym->dep_list);
 	free(sym);
 }
 
@@ -1597,7 +1605,7 @@ static int depmod_load_module_dependencies(struct depmod *depmod, struct mod *mo
 	return 0;
 }
 
-// this sucks
+// TODO this sucks
 static void show_modname(int *c, const char *modname)
 {
 	if (*c == 0)

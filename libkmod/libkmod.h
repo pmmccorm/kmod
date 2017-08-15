@@ -252,6 +252,27 @@ enum kmod_symbol_bind {
 	KMOD_SYMBOL_UNDEF = 'U'
 };
 
+/*
+static const char*
+kmod_symbol_bind_string(enum kmod_symbol_bind bind)
+{
+	switch (bind) {
+	case (KMOD_SYMBOL_NONE):
+		return "none";
+	case (KMOD_SYMBOL_LOCAL):
+		return "local";
+	case (KMOD_SYMBOL_GLOBAL):
+		return "global";
+	case (KMOD_SYMBOL_WEAK):
+		return "weak";
+	case (KMOD_SYMBOL_UNDEF):
+		return "undefined";
+	default:
+		return "unknown";
+	};
+}
+*/
+
 int kmod_module_get_dependency_symbols(const struct kmod_module *mod, struct kmod_list **list);
 const char *kmod_module_dependency_symbol_get_symbol(const struct kmod_list *entry);
 int kmod_module_dependency_symbol_get_bind(const struct kmod_list *entry);
