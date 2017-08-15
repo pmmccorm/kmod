@@ -47,6 +47,28 @@
 #define DEFAULT_VERBOSE LOG_WARNING
 static int verbose = DEFAULT_VERBOSE;
 
+enum show_types {
+	DEFAULT = 0,
+	BUILTINS = 1,
+	REVERSE = 2,
+};
+
+static enum show_types parse_dtypes(const char c)
+{
+	switch (c) {
+	default:
+	case 'a':
+		return DEFAULT;
+	case 'r':
+		return REVERSE;
+	case 'b':
+		return BUILTINS;
+	}
+}
+
+static int show_debug = 0;
+static int debug_type = DEFAULT;
+
 static const char CFG_BUILTIN_KEY[] = "built-in";
 static const char CFG_EXTERNAL_KEY[] = "external";
 static const char *default_cfg_paths[] = {
@@ -56,7 +78,7 @@ static const char *default_cfg_paths[] = {
 	NULL
 };
 
-static const char cmdopts_s[] = "aAb:C:E:F:euqrvnP:wmVh";
+static const char cmdopts_s[] = "aAb:C:E:F:euqrvd:nP:wmVh";
 static const struct option cmdopts[] = {
 	{ "all", no_argument, 0, 'a' },
 	{ "quick", no_argument, 0, 'A' },
@@ -69,6 +91,7 @@ static const struct option cmdopts[] = {
 	{ "quiet", no_argument, 0, 'q' }, /* deprecated */
 	{ "root", no_argument, 0, 'r' }, /* deprecated */
 	{ "verbose", no_argument, 0, 'v' },
+	{ "debug", required_argument, 0, 'd' },
 	{ "show", no_argument, 0, 'n' },
 	{ "dry-run", no_argument, 0, 'n' },
 	{ "symbol-prefix", required_argument, 0, 'P' },
@@ -83,6 +106,7 @@ static void help(void)
 {
 	printf("Usage:\n"
 		"\t%s -[aA] [options] [forced_version]\n"
+		"\t%s -v [forced_version] modulename\n"
 		"\n"
 		"If no arguments (except options) are given, \"depmod -a\" is assumed\n"
 		"\n"
@@ -96,6 +120,7 @@ static void help(void)
 		"\t-P, --symbol-prefix  Architecture symbol prefix\n"
 		"\t-C, --config=PATH    Read configuration from PATH\n"
 		"\t-v, --verbose        Enable verbose mode\n"
+		"\t-d, --debug=TYPE     Display debugging output (all,reverse)\n"
 		"\t-w, --warn           Warn on duplicates\n"
 		"\t-V, --version        show version\n"
 		"\t-h, --help           show this help\n"
@@ -106,7 +131,7 @@ static void help(void)
 		"\t                     current kernel symbols.\n"
 		"\t-E, --symvers=FILE   Use Module.symvers file to check\n"
 		"\t                     symbol versions.\n",
-		program_invocation_short_name);
+		program_invocation_short_name, program_invocation_short_name);
 }
 
 _printf_format_(1, 2)
@@ -867,6 +892,7 @@ struct mod {
 	char *uncrelpath; /* same as relpath but ending in .ko */
 	struct kmod_list *info_list;
 	struct kmod_list *dep_sym_list;
+	struct kmod_list *own_sym_list;
 	struct array deps; /* struct symbol */
 	size_t baselen; /* points to start of basename/filename */
 	size_t modnamesz;
@@ -881,6 +907,7 @@ struct mod {
 
 struct symbol {
 	struct mod *owner;
+	struct kmod_list *dep_list; /* modules which depend on this sym */
 	uint64_t crc;
 	char name[];
 };
@@ -901,6 +928,7 @@ static void mod_free(struct mod *mod)
 	kmod_module_unref(mod->kmod);
 	kmod_module_info_free_list(mod->info_list);
 	kmod_module_dependency_symbols_free_list(mod->dep_sym_list);
+	kmod_module_symbols_free_list(mod->own_sym_list);
 	free(mod->uncrelpath);
 	free(mod->path);
 	free(mod);
@@ -912,6 +940,8 @@ static int mod_add_dependency(struct mod *mod, struct symbol *sym)
 
 	DBG("%s depends on %s %s\n", mod->path, sym->name,
 	    sym->owner != NULL ? sym->owner->path : "(unknown)");
+
+	sym->dep_list = kmod_list_append(sym->dep_list, mod);
 
 	if (sym->owner == NULL)
 		return 0;
@@ -931,6 +961,8 @@ static void symbol_free(struct symbol *sym)
 {
 	DBG("free %p sym=%s, owner=%p %s\n", sym, sym->name, sym->owner,
 	    sym->owner != NULL ? sym->owner->path : "");
+
+	// TODO free dep_list
 	free(sym);
 }
 
@@ -1457,6 +1489,7 @@ static int depmod_symbol_add(struct depmod *depmod, const char *name,
 	if (sym == NULL)
 		return -ENOMEM;
 
+	sym->dep_list = NULL;
 	sym->owner = (struct mod *)owner;
 	sym->crc = crc;
 	memcpy(sym->name, name, namelen);
@@ -1483,6 +1516,9 @@ static struct symbol *depmod_symbol_find(const struct depmod *depmod,
 	return hash_find(depmod->symbols, name);
 }
 
+// note we must display module symbol ownership here
+// because if we try to keep refs to each module we end up with
+// too many open files (~4000 .kos on ubuntu)
 static int depmod_load_modules(struct depmod *depmod)
 {
 	struct mod **itr, **itr_end;
@@ -1495,7 +1531,8 @@ static int depmod_load_modules(struct depmod *depmod)
 		struct mod *mod = *itr;
 		struct kmod_list *l, *list = NULL;
 		int err = kmod_module_get_symbols(mod->kmod, &list);
-		if (err < 0) {
+		int err2 = kmod_module_get_symbols(mod->kmod, &mod->own_sym_list);
+		if (err < 0 || err2 < 0) {
 			if (err == -ENOENT)
 				DBG("ignoring %s: no symbols\n", mod->path);
 			else
@@ -1555,6 +1592,85 @@ static int depmod_load_module_dependencies(struct depmod *depmod, struct mod *mo
 		}
 
 		mod_add_dependency(mod, sym);
+	}
+
+	return 0;
+}
+
+// this sucks
+static void show_modname(int *c, const char *modname)
+{
+	if (*c == 0)
+		printf("%s:\n", modname);
+	++(*c);
+}
+
+static void csv_print(struct kmod_list *mods)
+{
+	struct kmod_list *l;
+
+	kmod_list_foreach(l, mods) {
+		struct mod *m = l->data;
+		printf("%s ", m->modname);
+	}
+}
+
+// for a given module, show which symbols it exports
+static void show_own_sym(struct depmod *depmod, struct mod *mod, const char *modname, int *count)
+{
+	struct kmod_list *l;
+	const char fmt[] = "    %-35s (%#"PRIx64") ";
+
+	kmod_list_foreach(l, mod->own_sym_list) {
+		const char *name = kmod_module_symbol_get_symbol(l);
+		uint64_t crc = kmod_module_symbol_get_crc(l);
+		struct symbol *sym = depmod_symbol_find(depmod, name);
+
+		show_modname(count, modname);
+		printf(fmt, name, crc);
+		csv_print(sym->dep_list);
+		printf("\n");
+	}
+}
+
+static void show_sym(struct depmod *depmod, struct kmod_list *l, const char *modname, int *count)
+{
+	const char *name = kmod_module_dependency_symbol_get_symbol(l);
+	uint64_t crc = kmod_module_dependency_symbol_get_crc(l);
+	enum kmod_symbol_bind bindtype = kmod_module_dependency_symbol_get_bind(l);
+	struct symbol *sym = depmod_symbol_find(depmod, name);
+	//const char *bindstring = kmod_symbol_bind_string(bindtype);
+	const char fmt[] = "    %-35s (%#"PRIx64") %c %-13s\n";
+
+	if (sym == NULL) {
+		if (debug_type != BUILTINS)
+			return;
+		show_modname(count, modname);
+		printf(fmt, name, crc, bindtype, depmod->cfg->kversion);
+	} else {
+		show_modname(count, modname);
+		printf(fmt, name, crc, bindtype, sym->owner->modname);
+	}
+}
+
+// show the symbols modules depend on
+static int depmod_show_dependencies(struct depmod *depmod)
+{
+	struct hash_iter module_iter;
+	struct kmod_list *l;
+	const void *v;
+
+	hash_iter_init(depmod->modules_by_name, &module_iter);
+	while (hash_iter_next(&module_iter, NULL, &v)) {
+		struct mod *mod = (struct mod *) v;
+		int sym_count = 0;
+
+		if (debug_type == REVERSE)
+			show_own_sym(depmod, mod, mod->modname, &sym_count);
+		else
+			kmod_list_foreach(l, mod->dep_sym_list) {
+				show_sym(depmod, l, mod->modname, &sym_count);
+			}
 	}
 
 	return 0;
@@ -2769,6 +2885,9 @@ static int do_depmod(int argc, char *argv[])
 		case 'v':
 			verbose++;
 			break;
+		case 'd':
+			show_debug = true;
+			debug_type = parse_dtypes(optarg[0]);
 		case 'n':
 			out = stdout;
 			break;
@@ -2925,7 +3044,11 @@ static int do_depmod(int argc, char *argv[])
 	if (err < 0)
 		goto cmdline_modules_failed;
 
-	err = depmod_output(&depmod, out);
+	if (show_debug) {
+		err = depmod_show_dependencies(&depmod);
+	} else {
+		err = depmod_output(&depmod, out);
+	}
 
 done:
 	depmod_shutdown(&depmod);
