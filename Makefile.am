@@ -121,7 +121,7 @@ if BUILD_TOOLS
 bin_PROGRAMS = tools/kmod
 
 noinst_SCRIPTS = \
-	tools/insmod tools/rmmod tools/lsmod \
+	tools/insmod tools/rmmod tools/lsmod tools/modsyms \
 	tools/modprobe tools/modinfo tools/depmod
 
 tools_kmod_SOURCES = \
@@ -129,7 +129,7 @@ tools_kmod_SOURCES = \
 	tools/rmmod.c tools/insmod.c \
 	tools/modinfo.c tools/modprobe.c \
 	tools/depmod.c tools/log.h tools/log.c \
-	tools/static-nodes.c
+	tools/static-nodes.c tools/modsyms.c
 
 if BUILD_EXPERIMENTAL
 tools_kmod_SOURCES += \
