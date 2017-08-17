@@ -69,6 +69,20 @@
       <arg><option><replaceable>version</replaceable></option></arg>
       <arg rep='repeat'><option><replaceable>filename</replaceable></option></arg>
     </cmdsynopsis>
+
+    <cmdsynopsis>
+      <command>depmod</command>
+      <arg><option>-d</option></arg>
+      <arg><option>-e</option></arg>
+      <arg><option>-E <replaceable>Module.symvers</replaceable></option></arg>
+      <arg><option>-F <replaceable>System.map</replaceable></option></arg>
+      <arg><option>-m</option></arg>
+      <arg><option>-n</option></arg>
+      <arg><option>-v</option></arg>
+      <arg><option>-P <replaceable>prefix</replaceable></option></arg>
+      <arg><option>-w</option></arg>
+      <arg><option><replaceable>version</replaceable></option></arg>
+    </cmdsynopsis>
   </refsynopsisdiv>
 
   <refsect1><title>DESCRIPTION</title>
@@ -295,6 +309,22 @@
         <listitem>
           <para>
             Warn on duplicate dependencies, aliases, symbol versions, etc.
+          </para>
+        </listitem>
+      </varlistentry>
+      <varlistentry>
+        <term>
+          <option>-d</option>
+        </term>
+        <term>
+          <option>--debug<replaceable> all,builtins,reverse</replaceable></option>
+        </term>
+        <listitem>
+          <para>
+            Only print debugging output of all parsed modules and exit.
+            all: show kernel modules, the symbols they depend on, and which module provides it.
+            builtins: same as all, but do not exclude symbols provided by running kernel.
+            reverse: show kernel modules and the symbols they export and which modules depend on the symbols.
           </para>
         </listitem>
       </varlistentry>

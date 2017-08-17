@@ -106,7 +106,8 @@ static void help(void)
 {
 	printf("Usage:\n"
 		"\t%s -[aA] [options] [forced_version]\n"
-		"\t%s -v [forced_version] modulename\n"
+		"\t%s [-b basedir] [options] [forced_version] [modulefiles..]\n"
+		"\t%s [-d type] [forced_version]\n"
 		"\n"
 		"If no arguments (except options) are given, \"depmod -a\" is assumed\n"
 		"\n"
@@ -131,7 +132,9 @@ static void help(void)
 		"\t                     current kernel symbols.\n"
 		"\t-E, --symvers=FILE   Use Module.symvers file to check\n"
 		"\t                     symbol versions.\n",
-		program_invocation_short_name, program_invocation_short_name);
+		program_invocation_short_name,
+		program_invocation_short_name,
+		program_invocation_short_name);
 }
 
 _printf_format_(1, 2)
